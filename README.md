@@ -108,7 +108,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	mods, err := r.Scan(ctx, repo)
+	mods, err := r.Run(ctx, repo)
 	if err != nil {
 		return err
 	}

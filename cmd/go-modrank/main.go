@@ -45,7 +45,7 @@ func (c *RunCommand) Execute(args []string) error {
 	if err != nil {
 		return err
 	}
-	mods, err := r.Scan(ctx, repos...)
+	mods, err := r.Run(ctx, repos...)
 	if err != nil {
 		return err
 	}

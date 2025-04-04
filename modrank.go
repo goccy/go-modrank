@@ -172,7 +172,7 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 	return nil
 }
 
-func (r *ModRank) Scan(ctx context.Context, repos ...*repository.Repository) ([]*GoModuleScore, error) {
+func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*GoModuleScore, error) {
 	ctx = withLogger(ctx, r.logger)
 	if err := r.storage.CreateRepositoryStorageIfNotExists(ctx); err != nil {
 		return nil, err

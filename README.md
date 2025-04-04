@@ -33,7 +33,7 @@ If your organization has a way to quantitatively assess repository importance, t
 
 ## Detecting go.mod and Retrieving Dependency Graphs
 
-The tool clones repositories, navigates to paths containing go.mod, and executes go mod graph. It then analyzes the results to construct a dependency graph of Go modules. If multiple go.mod files exist, the tool constructs as many dependency graphs as needed.
+The tool clones repositories, navigates to paths containing go.mod, and executes `go mod graph`. It then analyzes the results to construct a dependency graph of Go modules. If multiple go.mod files are found, a graph will be created for each one.
 
 ## Scoring Modules Based on the Dependency Graph
 

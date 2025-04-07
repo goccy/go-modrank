@@ -163,8 +163,8 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 	return nil
 }
 
-// Run the score is calculated for the repository specified in the argument.
-// If you have called the `UpdateRepositoryStatusByGitHubAPI` in advance, you may be able to shorten the processing time by using the pre-built database.
+// Run compute and return the Go module score for each specified repository.
+// If UpdateRepositoryStatusByGitHubAPI has been called previously, precomputed statuses can be used to reduce processing time.
 func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*GoModuleScore, error) {
 	ctx = withLogger(ctx, r.logger)
 	if err := r.storage.CreateRepositoryStorageIfNotExists(ctx); err != nil {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,6 +64,10 @@ type GoModuleScore struct {
 	Score      int    `json:"score"`
 }
 
+// UpdateRepositoryStatusByGitHubAPI if you are working with a large number of repositories and they are all on GitHub,
+// it is useful to skip the process of cloning the repositories by checking in advance
+// whether they have been archived or whether they have a go.mod file, and thus shorten the process.
+// This API checks for these things and saves them in the database.
 func (r *ModRank) UpdateRepositoryStatusByGitHubAPI(ctx context.Context, repos ...*repository.Repository) error {
 	ctx = withLogger(ctx, r.logger)
 	if err := r.storage.CreateRepositoryStorageIfNotExists(ctx); err != nil {
@@ -103,11 +106,7 @@ func (r *ModRank) UpdateRepositoryStatusByGitHubAPI(ctx context.Context, repos .
 }
 
 func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *repository.Repository) error {
-	parsedURL, err := url.Parse(repo.URL())
-	if err != nil {
-		return fmt.Errorf("invalid repository url: %w", err)
-	}
-	if parsedURL.Host != "github.com" {
+	if !repo.IsGitHubRepository() {
 		return nil
 	}
 	repoStat, _ := r.storage.FindRepositoryByName(ctx, repo.OrgWithName())
@@ -125,15 +124,7 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 		lastHead = repoStat.HeadCommitHash
 	}
 
-	path := strings.TrimPrefix(strings.TrimSuffix(parsedURL.Path, ".git"), "/")
-	parts := strings.Split(path, "/")
-	if len(parts) != 2 {
-		return fmt.Errorf("unexpected repository url path: %s", path)
-	}
-	org := parts[0]
-	pkg := parts[1]
-
-	head, err := r.githubClient.GetHeadCommit(ctx, org, pkg)
+	head, err := r.githubClient.GetHeadCommit(ctx, repo.Org(), repo.Name())
 	if err != nil {
 		return fmt.Errorf("failed to get head commit: %w", err)
 	}
@@ -142,7 +133,7 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 		return nil
 	}
 
-	isArchived, err := r.githubClient.IsArchived(ctx, org, pkg)
+	isArchived, err := r.githubClient.IsArchived(ctx, repo.Org(), repo.Name())
 	if err != nil {
 		return fmt.Errorf("failed to get archived status: %w", err)
 	}
@@ -157,7 +148,7 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 		}
 		return nil
 	}
-	existsGoMod, err := r.githubClient.ExistsGoMod(ctx, org, pkg)
+	existsGoMod, err := r.githubClient.ExistsGoMod(ctx, repo.Org(), repo.Name())
 	if err != nil {
 		return fmt.Errorf("failed to find go.mod with unexpected error: %w", err)
 	}
@@ -172,6 +163,8 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 	return nil
 }
 
+// Run compute and return the Go module score for each specified repository.
+// If UpdateRepositoryStatusByGitHubAPI has been called previously, precomputed statuses can be used to reduce processing time.
 func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*GoModuleScore, error) {
 	ctx = withLogger(ctx, r.logger)
 	if err := r.storage.CreateRepositoryStorageIfNotExists(ctx); err != nil {

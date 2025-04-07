@@ -92,6 +92,10 @@ func (r *Repository) GoModPaths() ([]string, error) {
 		if info.IsDir() {
 			return nil
 		}
+		// ignore vendor path.
+		if r.isVendorPath(path) {
+			return nil
+		}
 		if filepath.Base(path) == "go.mod" {
 			paths = append(paths, path)
 		}
@@ -108,4 +112,13 @@ func (r *Repository) IsGitHubRepository() bool {
 		return false
 	}
 	return parsedURL.Host == "github.com"
+}
+
+func (r *Repository) isVendorPath(path string) bool {
+	for _, sub := range strings.Split(path, string(filepath.Separator)) {
+		if sub == "vendor" {
+			return true
+		}
+	}
+	return false
 }

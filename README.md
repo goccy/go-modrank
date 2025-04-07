@@ -77,6 +77,10 @@ Available commands:
   update  Update repository status using the GitHub API to improve performance
 ```
 
+# Prerequisites
+
+In order to use the `go mod graph` command, you will need to have the Go binary installed in your execution environment.
+
 # Synopsis
 
 To use this tool as a library, you can follow the example below. By default, SQLite is used for data storage, but other databases can also be used. The behavior can be fine-tuned using options. For more details, refer to the API Reference.

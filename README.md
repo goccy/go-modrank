@@ -3,7 +3,7 @@
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/goccy/go-modrank)](https://pkg.go.dev/github.com/goccy/go-modrank)
 ![Go](https://github.com/goccy/go-modrank/workflows/Go/badge.svg)
 
-A tool to calculate the Go modules that are truly important to you.
+A tool to identify the Go modules that truly matter to you
 
 # Motivation
 

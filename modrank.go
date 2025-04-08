@@ -109,7 +109,7 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 	if !repo.IsGitHubRepository() {
 		return nil
 	}
-	repoStat, _ := r.storage.FindRepositoryByName(ctx, repo.OrgWithName())
+	repoStat, _ := r.storage.FindRepositoryByName(ctx, repo.NameWithOwner())
 	if repoStat != nil && repoStat.IsArchived {
 		logger(ctx).DebugContext(ctx, "skip updating: repository is already archived")
 		return nil
@@ -124,7 +124,7 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 		lastHead = repoStat.HeadCommitHash
 	}
 
-	head, err := r.githubClient.GetHeadCommit(ctx, repo.Org(), repo.Name())
+	head, err := r.githubClient.GetHeadCommit(ctx, repo.Owner(), repo.Name())
 	if err != nil {
 		return fmt.Errorf("failed to get head commit: %w", err)
 	}
@@ -133,14 +133,14 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 		return nil
 	}
 
-	isArchived, err := r.githubClient.IsArchived(ctx, repo.Org(), repo.Name())
+	isArchived, err := r.githubClient.IsArchived(ctx, repo.Owner(), repo.Name())
 	if err != nil {
 		return fmt.Errorf("failed to get archived status: %w", err)
 	}
 	if isArchived {
 		logger(ctx).DebugContext(ctx, "save repository status", "isArchived", true)
 		if err := r.storage.InsertOrUpdateRepository(ctx, &RepositoryStatus{
-			OrgWithName:    repo.OrgWithName(),
+			NameWithOwner:  repo.NameWithOwner(),
 			IsArchived:     true,
 			HeadCommitHash: head,
 		}); err != nil {
@@ -148,13 +148,13 @@ func (r *ModRank) updateRepositoryStatusByGitHubAPI(ctx context.Context, repo *r
 		}
 		return nil
 	}
-	existsGoMod, err := r.githubClient.ExistsGoMod(ctx, repo.Org(), repo.Name())
+	existsGoMod, err := r.githubClient.ExistsGoMod(ctx, repo.Owner(), repo.Name())
 	if err != nil {
 		return fmt.Errorf("failed to find go.mod with unexpected error: %w", err)
 	}
 	logger(ctx).DebugContext(ctx, "save repository status", "go.mod", existsGoMod)
 	if err := r.storage.InsertOrUpdateRepository(ctx, &RepositoryStatus{
-		OrgWithName:    repo.OrgWithName(),
+		NameWithOwner:  repo.NameWithOwner(),
 		ExistsGoMod:    existsGoMod,
 		HeadCommitHash: lastHead, // keep last head value to update scanning process.
 	}); err != nil {
@@ -188,7 +188,7 @@ func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*
 	}
 
 	for _, repo := range repos {
-		repoMap[repo.OrgWithName()] = repo
+		repoMap[repo.NameWithOwner()] = repo
 		eg.Go(func() (e error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -267,7 +267,7 @@ func (r *ModRank) scoreGoModule(ctx context.Context, mod *GoModule, weight int, 
 }
 
 func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) error {
-	repoStat, _ := r.storage.FindRepositoryByName(ctx, repo.OrgWithName())
+	repoStat, _ := r.storage.FindRepositoryByName(ctx, repo.NameWithOwner())
 	if repoStat != nil && repoStat.IsArchived {
 		logger(ctx).DebugContext(ctx, "skip scanning: repository is already archived", "from", "db")
 		return nil
@@ -287,7 +287,7 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 	}
 
 	if r.githubAPICache && repo.IsGitHubRepository() {
-		head, err := r.githubClient.GetHeadCommit(ctx, repo.Org(), repo.Name())
+		head, err := r.githubClient.GetHeadCommit(ctx, repo.Owner(), repo.Name())
 		if err != nil {
 			return fmt.Errorf("failed to get head commit: %w", err)
 		}
@@ -340,7 +340,7 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 	}
 	logger(ctx).DebugContext(ctx, "save scanning status", "head", head)
 	if err := r.storage.InsertOrUpdateRepository(ctx, &RepositoryStatus{
-		OrgWithName:    repo.OrgWithName(),
+		NameWithOwner:  repo.NameWithOwner(),
 		HeadCommitHash: head,
 		ExistsGoMod:    len(paths) != 0,
 	}); err != nil {

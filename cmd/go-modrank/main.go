@@ -169,7 +169,7 @@ func createModRank(ctx context.Context, cfg *Config) (*modrank.ModRank, []*repos
 	var scanRepos []*repository.Repository
 	if cfg.Organization != "" {
 		githubClient := modrank.NewGitHubClient(ctx, githubToken)
-		repoNames, err := githubClient.FindRepositoriesByOrg(ctx, cfg.Organization)
+		repoNames, err := githubClient.FindRepositoriesByOwner(ctx, cfg.Organization)
 		if err != nil {
 			return nil, nil, err
 		}

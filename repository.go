@@ -1,7 +1,7 @@
 package modrank
 
 type RepositoryStatus struct {
-	OrgWithName    string
+	NameWithOwner  string
 	HeadCommitHash string
 	IsArchived     bool
 	ExistsGoMod    bool

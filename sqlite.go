@@ -30,7 +30,7 @@ func (s *SQLiteStorage) CreateRepositoryStorageIfNotExists(ctx context.Context) 
 	if _, err := s.db.ExecContext(ctx,
 		`
 CREATE TABLE IF NOT EXISTS Repositories (
-  OrgWithName TEXT PRIMARY KEY NOT NULL,
+  NameWithOwner TEXT PRIMARY KEY NOT NULL,
   Head TEXT NOT NULL,
   IsArchived BOOL NOT NULL,
   ExistsGoMod BOOL NOT NULL
@@ -41,19 +41,19 @@ CREATE TABLE IF NOT EXISTS Repositories (
 	return nil
 }
 
-func (s *SQLiteStorage) FindRepositoryByName(ctx context.Context, orgWithName string) (*RepositoryStatus, error) {
+func (s *SQLiteStorage) FindRepositoryByName(ctx context.Context, nameWithOwner string) (*RepositoryStatus, error) {
 	var (
 		headCommitHash string
 		isArchived     bool
 		existsGoMod    bool
 	)
 	if err := s.db.QueryRowContext(
-		ctx, "SELECT Head, IsArchived, ExistsGoMod FROM Repositories WHERE OrgWithName = ?", orgWithName,
+		ctx, "SELECT Head, IsArchived, ExistsGoMod FROM Repositories WHERE NameWithOwner = ?", nameWithOwner,
 	).Scan(&headCommitHash, &isArchived, &existsGoMod); err != nil {
 		return nil, err
 	}
 	return &RepositoryStatus{
-		OrgWithName:    orgWithName,
+		NameWithOwner:  nameWithOwner,
 		HeadCommitHash: headCommitHash,
 		IsArchived:     isArchived,
 		ExistsGoMod:    existsGoMod,
@@ -64,12 +64,12 @@ func (s *SQLiteStorage) InsertOrUpdateRepository(ctx context.Context, st *Reposi
 	if _, err := s.db.ExecContext(
 		ctx, `
 INSERT INTO
-  Repositories(OrgWithName, Head, IsArchived, ExistsGoMod) VALUES (?, ?, ?, ?)
-ON CONFLICT(OrgWithName)
+  Repositories(NameWithOwner, Head, IsArchived, ExistsGoMod) VALUES (?, ?, ?, ?)
+ON CONFLICT(NameWithOwner)
 DO UPDATE
   SET Head = ?, IsArchived = ?, ExistsGoMod = ?
 `,
-		st.OrgWithName, st.HeadCommitHash, st.IsArchived, st.ExistsGoMod,
+		st.NameWithOwner, st.HeadCommitHash, st.IsArchived, st.ExistsGoMod,
 
 		st.HeadCommitHash, st.IsArchived, st.ExistsGoMod,
 	); err != nil {
@@ -83,7 +83,7 @@ func (s *SQLiteStorage) CreateGoModuleStorageIfNotExists(ctx context.Context) er
 		`
 CREATE TABLE IF NOT EXISTS GoModules (
   ID TEXT PRIMARY KEY NOT NULL,
-  OrgWithName TEXT NOT NULL,
+  NameWithOwner TEXT NOT NULL,
   GoModPath TEXT NOT NULL,
   ModuleName TEXT NOT NULL,
   ModuleVersion TEXT NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS GoModules (
 func (s *SQLiteStorage) FindRootGoModules(ctx context.Context) ([]*GoModule, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT ID, OrgWithName, GoModPath, ModuleName, ModuleVersion, HostedRepository, Refers, Referers
+		`SELECT ID, NameWithOwner, GoModPath, ModuleName, ModuleVersion, HostedRepository, Refers, Referers
            FROM GoModules WHERE IsRoot = TRUE`,
 	)
 	if err != nil {
@@ -111,7 +111,7 @@ func (s *SQLiteStorage) FindRootGoModules(ctx context.Context) ([]*GoModule, err
 	for rows.Next() {
 		var (
 			id             string
-			orgWithName    string
+			nameWithOwner  string
 			goModPath      string
 			modName        string
 			modVer         string
@@ -119,12 +119,12 @@ func (s *SQLiteStorage) FindRootGoModules(ctx context.Context) ([]*GoModule, err
 			referIDsJSON   string
 			refererIDsJSON string
 		)
-		if err := rows.Scan(&id, &orgWithName, &goModPath, &modName, &modVer, &hostedRepo, &referIDsJSON, &refererIDsJSON); err != nil {
+		if err := rows.Scan(&id, &nameWithOwner, &goModPath, &modName, &modVer, &hostedRepo, &referIDsJSON, &refererIDsJSON); err != nil {
 			break
 		}
 		rootMod := &GoModule{
 			ID:               id,
-			Repository:       orgWithName,
+			Repository:       nameWithOwner,
 			GoModPath:        goModPath,
 			Name:             modName,
 			Version:          modVer,
@@ -153,7 +153,7 @@ func (s *SQLiteStorage) FindGoModuleByID(ctx context.Context, id string) (*GoMod
 	}
 
 	var (
-		orgWithName    string
+		nameWithOwner  string
 		goModPath      string
 		modName        string
 		modVer         string
@@ -162,14 +162,14 @@ func (s *SQLiteStorage) FindGoModuleByID(ctx context.Context, id string) (*GoMod
 		refererIDsJSON string
 	)
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT OrgWithName, GoModPath, ModuleName, ModuleVersion, HostedRepository, Refers, Referers
+		`SELECT NameWithOwner, GoModPath, ModuleName, ModuleVersion, HostedRepository, Refers, Referers
            FROM GoModules WHERE ID = ?`, id,
-	).Scan(&orgWithName, &goModPath, &modName, &modVer, &hostedRepo, &referIDsJSON, &refererIDsJSON); err != nil {
+	).Scan(&nameWithOwner, &goModPath, &modName, &modVer, &hostedRepo, &referIDsJSON, &refererIDsJSON); err != nil {
 		return nil, err
 	}
 	mod := &GoModule{
 		ID:               id,
-		Repository:       orgWithName,
+		Repository:       nameWithOwner,
 		GoModPath:        goModPath,
 		Name:             modName,
 		Version:          modVer,
@@ -230,7 +230,7 @@ func (s *SQLiteStorage) insertOrUpdateGoModule(ctx context.Context, tx *sql.Tx, 
 INSERT INTO
   GoModules(
     ID,
-    OrgWithName,
+    NameWithOwner,
     GoModPath,
     ModuleName,
     ModuleVersion,

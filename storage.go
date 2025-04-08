@@ -9,7 +9,7 @@ type Storage interface {
 
 type RepositoryStorage interface {
 	CreateRepositoryStorageIfNotExists(ctx context.Context) error
-	FindRepositoryByName(ctx context.Context, orgWithName string) (*RepositoryStatus, error)
+	FindRepositoryByName(ctx context.Context, nameWithOwner string) (*RepositoryStatus, error)
 	InsertOrUpdateRepository(ctx context.Context, st *RepositoryStatus) error
 }
 

@@ -15,7 +15,7 @@ const DefaultRepositoryWeight = 1
 
 type Repository struct {
 	repoName  string
-	orgName   string
+	ownerName string
 	url       string
 	auth      *BasicAuth
 	cloner    Cloner
@@ -30,10 +30,10 @@ func New(url string, opts ...Option) (*Repository, error) {
 		return nil, fmt.Errorf("unexpected repository url: %s", url)
 	}
 	repoName := parts[len(parts)-1]
-	orgName := parts[len(parts)-2]
+	ownerName := parts[len(parts)-2]
 	r := &Repository{
 		repoName:  repoName,
-		orgName:   orgName,
+		ownerName: ownerName,
 		url:       url,
 		cloner:    new(DefaultCloner),
 		clonePath: helper.TmpRoot,
@@ -51,16 +51,16 @@ func (r *Repository) Path() string {
 	return filepath.Join(r.clonePath, r.repoName)
 }
 
-func (r *Repository) Org() string {
-	return r.orgName
+func (r *Repository) Owner() string {
+	return r.ownerName
 }
 
 func (r *Repository) Name() string {
 	return r.repoName
 }
 
-func (r *Repository) OrgWithName() string {
-	return r.orgName + "/" + r.repoName
+func (r *Repository) NameWithOwner() string {
+	return r.ownerName + "/" + r.repoName
 }
 
 func (r *Repository) Auth() *BasicAuth {

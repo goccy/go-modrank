@@ -47,7 +47,7 @@ func NewGitHubClient(ctx context.Context, token string) *GitHubClient {
 	}
 }
 
-func (c *GitHubClient) FindRepositoriesByOrg(ctx context.Context, org string) ([]string, error) {
+func (c *GitHubClient) FindRepositoriesByOwner(ctx context.Context, owner string) ([]string, error) {
 	var repoNames []string
 	var cursor *githubv4.String
 
@@ -68,7 +68,7 @@ func (c *GitHubClient) FindRepositoriesByOrg(ctx context.Context, org string) ([
 		}
 
 		variables := map[string]interface{}{
-			"organization": githubv4.String(org),
+			"organization": githubv4.String(owner),
 			"cursor":       cursor,
 		}
 
@@ -159,8 +159,8 @@ func (c *GitHubClient) createGitHubRepositoryCache(repos []*repository.Repositor
 		queryMap = make(map[string]*repository.Repository)
 	)
 	for _, repo := range repos {
-		orgWithName := repo.OrgWithName()
-		key := strings.ReplaceAll(orgWithName, "/", "_")
+		nameWithOwner := repo.NameWithOwner()
+		key := strings.ReplaceAll(nameWithOwner, "/", "_")
 		key = strings.ReplaceAll(key, "-", "_")
 		key = strings.ReplaceAll(key, ".", "_")
 		queryMap[key] = repo
@@ -174,7 +174,7 @@ func (c *GitHubClient) createGitHubRepositoryCache(repos []*repository.Repositor
       }
     }
   }
-`, key, repo.Org(), repo.Name()),
+`, key, repo.Owner(), repo.Name()),
 		)
 	}
 
@@ -249,15 +249,15 @@ func (c *GitHubClient) chunkRepos(repos []*repository.Repository) [][]*repositor
 	return chunks
 }
 
-func (c *GitHubClient) getRepositoryFromCache(orgWithName string) *GitHubRepository {
+func (c *GitHubClient) getRepositoryFromCache(nameWithOwner string) *GitHubRepository {
 	c.repoCacheMu.RLock()
-	repo := c.repoCache[orgWithName]
+	repo := c.repoCache[nameWithOwner]
 	c.repoCacheMu.RUnlock()
 	return repo
 }
 
 func (c *GitHubClient) setRepositoryCache(repo *GitHubRepository) {
 	c.repoCacheMu.Lock()
-	c.repoCache[repo.Repository.OrgWithName()] = repo
+	c.repoCache[repo.Repository.NameWithOwner()] = repo
 	c.repoCacheMu.Unlock()
 }

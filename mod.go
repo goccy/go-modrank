@@ -93,10 +93,10 @@ func newGoModule(repo *repository.Repository, goModPath, rootModName, modPath st
 		// keyword
 		return nil, nil
 	}
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s/%s/%s/%s", repo.OrgWithName(), goModPath, name, ver)))
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s/%s/%s/%s", repo.NameWithOwner(), goModPath, name, ver)))
 	node := &GoModule{
 		ID:               hex.EncodeToString(hash[:]),
-		Repository:       repo.OrgWithName(),
+		Repository:       repo.NameWithOwner(),
 		GoModPath:        goModPath,
 		Name:             name,
 		Version:          ver,
@@ -173,18 +173,18 @@ func getHostedRepositoryByGoImportMetaTag(name string) (string, error) {
 }
 
 var (
-	gopkgInPat        = regexp.MustCompile(`gopkg.in/(.+)\.v[0-9]+$`)
-	gopkgInWithOrgPat = regexp.MustCompile(`gopkg.in/(.+)/(.+)\.v[0-9]+$`)
+	gopkgInPat          = regexp.MustCompile(`gopkg.in/(.+)\.v[0-9]+$`)
+	gopkgInWithOwnerPat = regexp.MustCompile(`gopkg.in/(.+)/(.+)\.v[0-9]+$`)
 )
 
 func getHostedRepositoryByGoPkgIn(name string) (string, error) {
 	{
-		matched := gopkgInWithOrgPat.FindAllStringSubmatch(name, -1)
+		matched := gopkgInWithOwnerPat.FindAllStringSubmatch(name, -1)
 		if len(matched) != 0 {
 			if len(matched[0]) == 3 {
-				org := matched[0][1]
+				owner := matched[0][1]
 				pkg := matched[0][2]
-				return fmt.Sprintf("github.com/%s/%s", org, pkg), nil
+				return fmt.Sprintf("github.com/%s/%s", owner, pkg), nil
 			}
 		}
 	}

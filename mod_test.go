@@ -26,7 +26,7 @@ func TestHostedRepository(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := getHostedRepositoryByName(test.name)
+			got := getHostedRepositoryByNameWithCache(test.name)
 			if test.expected != got {
 				t.Fatalf("failed to get hosted repository name from %s. got %s", test.name, got)
 			}

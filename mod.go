@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gocolly/colly"
 
@@ -100,7 +101,7 @@ func newGoModule(repo *repository.Repository, goModPath, rootModName, modPath st
 		GoModPath:        goModPath,
 		Name:             name,
 		Version:          ver,
-		HostedRepository: getHostedRepositoryByName(name),
+		HostedRepository: getHostedRepositoryByNameWithCache(name),
 		referMap:         make(map[*GoModule]struct{}),
 		refererMap:       make(map[*GoModule]struct{}),
 	}
@@ -108,18 +109,44 @@ func newGoModule(repo *repository.Repository, goModPath, rootModName, modPath st
 	return node, nil
 }
 
-func getHostedRepositoryByName(name string) string {
+func getHostedRepositoryByNameWithCache(name string) string {
 	normalized := normalizeGoModuleName(name)
-	if repo, _ := getHostedRepositoryByGoProxy(normalized); repo != "" {
+	if repo := getHostedRepositoryByCache(normalized); repo != "" {
 		return repo
 	}
-	if repo, _ := getHostedRepositoryByGoImportMetaTag(normalized); repo != "" {
+	ret := getHostedRepositoryByName(normalized)
+	setHostedRepositoryCache(normalized, ret)
+	return ret
+}
+
+func getHostedRepositoryByName(name string) string {
+	if repo, _ := getHostedRepositoryByGoProxy(name); repo != "" {
 		return repo
 	}
-	if repo, _ := getHostedRepositoryByGoPkgIn(normalized); repo != "" {
+	if repo, _ := getHostedRepositoryByGoImportMetaTag(name); repo != "" {
 		return repo
 	}
-	return normalized
+	if repo, _ := getHostedRepositoryByGoPkgIn(name); repo != "" {
+		return repo
+	}
+	return name
+}
+
+var (
+	hostRepoCache   = make(map[string]string)
+	hostRepoCacheMu sync.RWMutex
+)
+
+func getHostedRepositoryByCache(name string) string {
+	hostRepoCacheMu.RLock()
+	defer hostRepoCacheMu.RUnlock()
+	return hostRepoCache[name]
+}
+
+func setHostedRepositoryCache(key, value string) {
+	hostRepoCacheMu.Lock()
+	defer hostRepoCacheMu.Unlock()
+	hostRepoCache[key] = value
 }
 
 func normalizeGoModuleName(name string) string {

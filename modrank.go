@@ -45,9 +45,11 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 		}
 	}
 	modRank.githubClient = NewGitHubClient(ctx, modRank.githubToken)
-	modRank.logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: modRank.logLevel,
-	}))
+	if modRank.logger == nil {
+		modRank.logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: modRank.logLevel,
+		}))
+	}
 	if modRank.storage == nil {
 		storage, err := NewSQLiteStorage(filepath.Join(helper.TmpRoot, "tmp.db"))
 		if err != nil {
@@ -173,7 +175,6 @@ func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*
 	if err := r.storage.CreateGoModuleStorageIfNotExists(ctx); err != nil {
 		return nil, err
 	}
-	repoMap := make(map[string]*repository.Repository)
 
 	eg, workerCtx := errgroup.WithContext(ctx)
 	eg.SetLimit(r.workerNum)
@@ -188,7 +189,6 @@ func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*
 	}
 
 	for _, repo := range repos {
-		repoMap[repo.NameWithOwner()] = repo
 		eg.Go(func() (e error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -215,6 +215,18 @@ func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*
 	if err := eg.Wait(); err != nil {
 		return nil, err
 	}
+	return r.Score(ctx, repos...)
+}
+
+// Score compute and return the Go module score for each specified repository.
+// This method uses the data already stored in the database and calculates only the Score.
+// If you have not yet registered your data, use the Run method to register your data in advance.
+func (r *ModRank) Score(ctx context.Context, repos ...*repository.Repository) ([]*GoModuleScore, error) {
+	ctx = withLogger(ctx, r.logger)
+	repoMap := make(map[string]*repository.Repository)
+	for _, repo := range repos {
+		repoMap[repo.NameWithOwner()] = repo
+	}
 	roots, err := r.storage.FindRootGoModules(ctx)
 	if err != nil {
 		return nil, err
@@ -224,7 +236,7 @@ func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*
 		logger(ctx).DebugContext(ctx, fmt.Sprintf("root module index: %d", idx))
 		repo := repoMap[root.Repository]
 		if repo == nil {
-			return nil, fmt.Errorf("failed to find repository from name: %s", root.Repository)
+			continue
 		}
 		depMap := make(map[*GoModule]struct{})
 		depMap[root] = struct{}{}

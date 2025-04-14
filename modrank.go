@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/mod/modfile"
@@ -334,6 +335,10 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 		return err
 	}
 	eg, childCtx := errgroup.WithContext(ctx)
+	var (
+		goMods   []*GoModule
+		goModsMu sync.Mutex
+	)
 	for _, path := range paths {
 		eg.Go(func() (e error) {
 			defer func() {
@@ -341,13 +346,20 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 					logger(childCtx).WarnContext(childCtx, "recover error", "error", r)
 				}
 			}()
-			if err := r.scanGoModule(withLogAttr(childCtx, slog.String("go.mod", path)), repo, path); err != nil {
+			mods, err := r.scanGoModule(withLogAttr(childCtx, slog.String("go.mod", path)), repo, path)
+			if err != nil {
 				return err
 			}
+			goModsMu.Lock()
+			goMods = append(goMods, mods...)
+			goModsMu.Unlock()
 			return nil
 		})
 	}
 	if err := eg.Wait(); err != nil {
+		return err
+	}
+	if err := r.storage.InsertOrUpdateGoModules(ctx, repo.NameWithOwner(), goMods); err != nil {
 		return err
 	}
 	logger(ctx).DebugContext(ctx, "save scanning status", "head", head)
@@ -361,16 +373,16 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 	return nil
 }
 
-func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository, path string) error {
+func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository, path string) ([]*GoModule, error) {
 	gomod, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	goModFile, err := modfile.Parse(path, gomod, nil)
 	if err != nil {
 		logger(ctx).WarnContext(ctx, "failed to parse go.mod", "error", err.Error())
-		return nil
+		return nil, nil
 	}
 	modName := goModFile.Module.Mod.Path
 	ctx = withLogAttr(ctx, slog.String("modname", modName))
@@ -380,7 +392,7 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		logger(ctx).WarnContext(ctx, "failed to run `go mod graph`", "stdout", string(out), "stderr", err.Error())
-		return nil
+		return nil, nil
 	}
 	modCache := make(map[string]*GoModule)
 	for _, line := range strings.Split(string(out), "\n") {
@@ -390,7 +402,7 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 		parts := strings.Split(line, " ")
 		if len(parts) != 2 {
 			logger(ctx).WarnContext(ctx, "unexpected go mod graph format", "line", line)
-			return nil
+			return nil, nil
 		}
 		caller, err := newGoModule(repo, path, modName, parts[0], modCache)
 		if err != nil {
@@ -411,8 +423,5 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 		mod.setupReference()
 		mods = append(mods, mod)
 	}
-	if err := r.storage.InsertOrUpdateGoModules(ctx, mods); err != nil {
-		return err
-	}
-	return nil
+	return mods, nil
 }

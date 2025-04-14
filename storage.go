@@ -17,5 +17,5 @@ type GoModuleStorage interface {
 	CreateGoModuleStorageIfNotExists(ctx context.Context) error
 	FindRootGoModules(ctx context.Context) ([]*GoModule, error)
 	FindGoModuleByID(ctx context.Context, id string) (*GoModule, error)
-	InsertOrUpdateGoModules(ctx context.Context, mods []*GoModule) error
+	InsertOrUpdateGoModules(ctx context.Context, nameWithOwner string, mods []*GoModule) error
 }

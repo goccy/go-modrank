@@ -190,7 +190,7 @@ func (s *SQLiteStorage) FindGoModuleByID(ctx context.Context, id string) (*GoMod
 	return mod, nil
 }
 
-func (s *SQLiteStorage) InsertOrUpdateGoModules(ctx context.Context, mods []*GoModule) error {
+func (s *SQLiteStorage) InsertOrUpdateGoModules(ctx context.Context, nameWithOwner string, mods []*GoModule) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

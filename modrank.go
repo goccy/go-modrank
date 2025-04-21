@@ -52,7 +52,16 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 		}))
 	}
 	if modRank.storage == nil {
-		storage, err := NewSQLiteStorage(filepath.Join(helper.TmpRoot, "tmp.db"))
+		tmpFile := "tmp.db"
+		dbFile := filepath.Join(helper.TmpRoot, tmpFile)
+		if err := os.MkdirAll(helper.TmpRoot, 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create temporary directory to create temporary database file: %s", helper.TmpRoot)
+		}
+		if _, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE, 0644); err != nil {
+			return nil, fmt.Errorf("failed to create temporary database file: %s", dbFile)
+		}
+		modRank.logger.Debug("temporary database file", slog.String("path", dbFile))
+		storage, err := NewSQLiteStorage(dbFile)
 		if err != nil {
 			return nil, err
 		}
@@ -387,6 +396,8 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 	modName := goModFile.Module.Mod.Path
 	ctx = withLogAttr(ctx, slog.String("modname", modName))
 
+	pathFromRepoRoot := strings.TrimLeft(strings.TrimPrefix(path, repo.Path()), "/")
+
 	cmd := exec.CommandContext(ctx, "go", "mod", "graph")
 	cmd.Dir = filepath.Dir(path)
 	out, err := cmd.CombinedOutput()
@@ -404,11 +415,11 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 			logger(ctx).WarnContext(ctx, "unexpected go mod graph format", "line", line)
 			return nil, nil
 		}
-		caller, err := newGoModule(repo, path, modName, parts[0], modCache)
+		caller, err := newGoModule(repo, pathFromRepoRoot, modName, parts[0], modCache)
 		if err != nil {
 			logger(ctx).WarnContext(ctx, "unexpected go module path", "target_mod", parts[0], "error", err.Error())
 		}
-		callee, err := newGoModule(repo, path, modName, parts[1], modCache)
+		callee, err := newGoModule(repo, pathFromRepoRoot, modName, parts[1], modCache)
 		if err != nil {
 			logger(ctx).WarnContext(ctx, "unexpected go module path", "target_mod", parts[1], "error", err.Error())
 		}

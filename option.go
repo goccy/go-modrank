@@ -4,11 +4,14 @@ import "log/slog"
 
 type Option func(r *ModRank) error
 
-// WithGitHubToken specify the token for using the GitHub API.
-// If this option is not specified, the value of the GITHUB_TOKEN environment variable is used.
-func WithGitHubToken(tk string) Option {
+// WithGitAccessToken if you want to access a private module when running go mod graph command,
+// you need permission to access the repository hosting the module.
+// Specifically, since `git ls-remote` command is used, access rights need to be set in gitconfig.
+// This library allows you to specify the WithGitAuthToken option,
+// which allows access to the repository using the specified token with temporary gitconfig.
+func WithGitAccessToken(tk string) Option {
 	return func(r *ModRank) error {
-		r.githubToken = tk
+		r.gitAccessToken = tk
 		return nil
 	}
 }
@@ -58,6 +61,15 @@ func WithLogger(v *slog.Logger) Option {
 func WithLogLevel(v slog.Level) Option {
 	return func(r *ModRank) error {
 		r.logLevel = v
+		return nil
+	}
+}
+
+// WithGitHubToken specify the token for using the GitHub API.
+// If this option is not specified, the value of the GITHUB_TOKEN environment variable is used.
+func WithGitHubToken(tk string) Option {
+	return func(r *ModRank) error {
+		r.githubToken = tk
 		return nil
 	}
 }

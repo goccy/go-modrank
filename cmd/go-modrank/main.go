@@ -31,13 +31,14 @@ type Option struct {
 
 type RunCommand struct {
 	*BaseOption
-	ClonePath string `description:"specify the cloned repository base path for caching" long:"clone-path"`
-	JSON      bool   `description:"output result with JSON format" long:"json"`
+	GitAccessToken string `description:"specify the access token for private module with go mod graph command" env:"GIT_ACCESS_TOKEN" long:"git-access-token"`
+	ClonePath      string `description:"specify the cloned repository base path for caching" long:"clone-path"`
+	JSON           bool   `description:"output result with JSON format" long:"json"`
 }
 
 func (c *RunCommand) Execute(args []string) error {
 	ctx := context.Background()
-	cfg, err := toConfig(c.BaseOption, c.ClonePath)
+	cfg, err := toConfig(c.BaseOption, c.ClonePath, c.GitAccessToken)
 	if err != nil {
 		return err
 	}
@@ -69,7 +70,7 @@ type UpdateCommand struct {
 
 func (c *UpdateCommand) Execute(args []string) error {
 	ctx := context.Background()
-	cfg, err := toConfig(c.BaseOption, "")
+	cfg, err := toConfig(c.BaseOption, "", "")
 	if err != nil {
 		return err
 	}
@@ -106,22 +107,24 @@ func main() {
 }
 
 type Config struct {
-	Database     string
-	Organization string
-	Repositories []string
-	Worker       int
-	Debug        bool
-	ClonePath    string
+	Database       string
+	Organization   string
+	Repositories   []string
+	Worker         int
+	Debug          bool
+	ClonePath      string
+	GitAccessToken string
 }
 
-func toConfig(opt *BaseOption, clonePath string) (*Config, error) {
+func toConfig(opt *BaseOption, clonePath, gitAccessToken string) (*Config, error) {
 	cfg := &Config{
-		Database:     opt.Database,
-		Organization: opt.Organization,
-		Repositories: opt.Repositories,
-		Worker:       opt.Worker,
-		Debug:        opt.Debug,
-		ClonePath:    clonePath,
+		Database:       opt.Database,
+		Organization:   opt.Organization,
+		Repositories:   opt.Repositories,
+		Worker:         opt.Worker,
+		Debug:          opt.Debug,
+		ClonePath:      clonePath,
+		GitAccessToken: gitAccessToken,
 	}
 	if opt.Config != "" {
 		c, err := modrank.LoadConfig(opt.Config)
@@ -148,6 +151,9 @@ func createModRank(ctx context.Context, cfg *Config) (*modrank.ModRank, []*repos
 	}
 	if cfg.Debug {
 		modrankOpts = append(modrankOpts, modrank.WithLogLevel(slog.LevelDebug))
+	}
+	if cfg.GitAccessToken != "" {
+		modrankOpts = append(modrankOpts, modrank.WithGitAccessToken(cfg.GitAccessToken))
 	}
 	modrankOpts = append(
 		modrankOpts,

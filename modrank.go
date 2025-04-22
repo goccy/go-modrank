@@ -68,7 +68,7 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 		if err := os.MkdirAll(modRank.tmpDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create temporary directory to create temporary database file: %s", modRank.tmpDir)
 		}
-		if _, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE, 0644); err != nil {
+		if _, err := os.OpenFile(dbFile, os.O_RDWR|os.O_CREATE, 0644); err != nil {
 			return nil, fmt.Errorf("failed to create temporary database file: %s", dbFile)
 		}
 		modRank.logger.Debug("temporary database file", slog.String("path", dbFile))

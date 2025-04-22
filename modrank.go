@@ -26,12 +26,19 @@ type ModRank struct {
 	logLevel       slog.Level
 	logger         *slog.Logger
 	githubToken    string
+	gitAccessToken string
+	gitConfigPath  string
 	githubClient   *GitHubClient
 	githubAPICache bool
 	workerNum      int
 }
 
 const defaultWorkerNum = 1
+
+const gitConfigTmpl = `
+[url "https://%s@github.com/"]
+    insteadOf = https://github.com/
+`
 
 func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 	modRank := &ModRank{
@@ -66,6 +73,14 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 			return nil, err
 		}
 		modRank.storage = storage
+	}
+	if modRank.gitAccessToken != "" {
+		gitConfigPath := filepath.Join(helper.TmpRoot, "gitconfig")
+		if err := os.WriteFile(gitConfigPath, []byte(fmt.Sprintf(gitConfigTmpl, modRank.gitAccessToken)), 0o644); err != nil {
+			return nil, err
+		}
+		modRank.logger.DebugContext(ctx, "create temporary gitconfig", "path", gitConfigPath)
+		modRank.gitConfigPath = gitConfigPath
 	}
 	return modRank, nil
 }
@@ -242,8 +257,7 @@ func (r *ModRank) Score(ctx context.Context, repos ...*repository.Repository) ([
 		return nil, err
 	}
 	logger(ctx).DebugContext(ctx, fmt.Sprintf("root module num: %d", len(roots)))
-	for idx, root := range roots {
-		logger(ctx).DebugContext(ctx, fmt.Sprintf("root module index: %d", idx))
+	for _, root := range roots {
 		repo := repoMap[root.Repository]
 		if repo == nil {
 			continue
@@ -398,8 +412,13 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 
 	pathFromRepoRoot := strings.TrimLeft(strings.TrimPrefix(path, repo.Path()), "/")
 
+	env := os.Environ()
+	if r.gitConfigPath != "" {
+		env = append(env, "GIT_CONFIG_GLOBAL="+r.gitConfigPath)
+	}
 	cmd := exec.CommandContext(ctx, "go", "mod", "graph")
 	cmd.Dir = filepath.Dir(path)
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		logger(ctx).WarnContext(ctx, "failed to run `go mod graph`", "stdout", string(out), "stderr", err.Error())

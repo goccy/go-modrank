@@ -25,6 +25,7 @@ type ModRank struct {
 	scoredModCache map[*GoModule]int
 	logLevel       slog.Level
 	logger         *slog.Logger
+	tmpDir         string
 	githubToken    string
 	gitAccessToken string
 	gitConfigPath  string
@@ -52,6 +53,9 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 			return nil, err
 		}
 	}
+	if modRank.tmpDir == "" {
+		modRank.tmpDir = helper.TmpRoot
+	}
 	modRank.githubClient = NewGitHubClient(ctx, modRank.githubToken)
 	if modRank.logger == nil {
 		modRank.logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -60,11 +64,11 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 	}
 	if modRank.storage == nil {
 		tmpFile := "tmp.db"
-		dbFile := filepath.Join(helper.TmpRoot, tmpFile)
-		if err := os.MkdirAll(helper.TmpRoot, 0o755); err != nil {
-			return nil, fmt.Errorf("failed to create temporary directory to create temporary database file: %s", helper.TmpRoot)
+		dbFile := filepath.Join(modRank.tmpDir, tmpFile)
+		if err := os.MkdirAll(modRank.tmpDir, 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create temporary directory to create temporary database file: %s", modRank.tmpDir)
 		}
-		if _, err := os.OpenFile(tmpFile, os.O_RDWR|os.O_CREATE, 0644); err != nil {
+		if _, err := os.OpenFile(dbFile, os.O_RDWR|os.O_CREATE, 0644); err != nil {
 			return nil, fmt.Errorf("failed to create temporary database file: %s", dbFile)
 		}
 		modRank.logger.Debug("temporary database file", slog.String("path", dbFile))
@@ -75,7 +79,10 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 		modRank.storage = storage
 	}
 	if modRank.gitAccessToken != "" {
-		gitConfigPath := filepath.Join(helper.TmpRoot, "gitconfig")
+		if err := os.MkdirAll(modRank.tmpDir, 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create temporary directory to create temporary gitconfig file: %s", modRank.tmpDir)
+		}
+		gitConfigPath := filepath.Join(modRank.tmpDir, "gitconfig")
 		if err := os.WriteFile(gitConfigPath, []byte(fmt.Sprintf(gitConfigTmpl, modRank.gitAccessToken)), 0o644); err != nil {
 			return nil, err
 		}

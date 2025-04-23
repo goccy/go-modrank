@@ -31,14 +31,17 @@ type ModRank struct {
 	gitConfigPath  string
 	githubClient   *GitHubClient
 	githubAPICache bool
+	cleanupRepo    bool
 	workerNum      int
 }
 
 const defaultWorkerNum = 1
 
 const gitConfigTmpl = `
-[url "https://%s@github.com/"]
+[url "https://x-access-token:%s@github.com/"]
     insteadOf = https://github.com/
+[credential]
+    helper = ""
 `
 
 func New(ctx context.Context, opts ...Option) (*ModRank, error) {
@@ -349,6 +352,15 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 			return nil
 		}
 		return fmt.Errorf("failed to clone repository: %w", err)
+	}
+
+	if r.cleanupRepo {
+		defer func() {
+			logger(ctx).DebugContext(ctx, "removing repository...")
+			if err := os.RemoveAll(path); err != nil {
+				logger(ctx).WarnContext(ctx, "failed to delete repository", "error", err)
+			}
+		}()
 	}
 
 	head, err := repo.HeadCommit(ctx, path)

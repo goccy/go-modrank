@@ -25,6 +25,14 @@ func WithTempDir(dir string) Option {
 	}
 }
 
+// WithCleanupRepository delete the cloned repository after scanning is complete.
+func WithCleanupRepository() Option {
+	return func(r *ModRank) error {
+		r.cleanupRepo = true
+		return nil
+	}
+}
+
 // WithStorage specify the storage for storing the scan results.
 // By default, SQLite is used, but if you want to use another database, you can change this option.
 func WithStorage(s Storage) Option {

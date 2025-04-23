@@ -31,17 +31,22 @@ type Option struct {
 
 type RunCommand struct {
 	*BaseOption
-	GitAccessToken string `description:"specify the access token for private module with go mod graph command" env:"GIT_ACCESS_TOKEN" long:"git-access-token"`
-	ClonePath      string `description:"specify the cloned repository base path for caching" long:"clone-path"`
-	JSON           bool   `description:"output result with JSON format" long:"json"`
+	GitAccessToken    string `description:"specify the access token for private module with go mod graph command" env:"GIT_ACCESS_TOKEN" long:"git-access-token"`
+	ClonePath         string `description:"specify the cloned repository base path for caching" long:"clone-path"`
+	CleanupRepository bool   `description:"specify deleting the cloned repository after scanning is complete" long:"cleanup-repo"`
+	JSON              bool   `description:"output result with JSON format" long:"json"`
 }
 
 func (c *RunCommand) Execute(args []string) error {
 	ctx := context.Background()
-	cfg, err := toConfig(c.BaseOption, c.ClonePath, c.GitAccessToken)
+	cfg, err := toConfig(c.BaseOption)
 	if err != nil {
 		return err
 	}
+	cfg.ClonePath = c.ClonePath
+	cfg.GitAccessToken = c.GitAccessToken
+	cfg.CleanupRepository = c.CleanupRepository
+
 	r, repos, err := createModRank(ctx, cfg)
 	if err != nil {
 		return err
@@ -70,7 +75,7 @@ type UpdateCommand struct {
 
 func (c *UpdateCommand) Execute(args []string) error {
 	ctx := context.Background()
-	cfg, err := toConfig(c.BaseOption, "", "")
+	cfg, err := toConfig(c.BaseOption)
 	if err != nil {
 		return err
 	}
@@ -107,24 +112,23 @@ func main() {
 }
 
 type Config struct {
-	Database       string
-	Organization   string
-	Repositories   []string
-	Worker         int
-	Debug          bool
-	ClonePath      string
-	GitAccessToken string
+	Database          string
+	Organization      string
+	Repositories      []string
+	Worker            int
+	Debug             bool
+	ClonePath         string
+	GitAccessToken    string
+	CleanupRepository bool
 }
 
-func toConfig(opt *BaseOption, clonePath, gitAccessToken string) (*Config, error) {
+func toConfig(opt *BaseOption) (*Config, error) {
 	cfg := &Config{
-		Database:       opt.Database,
-		Organization:   opt.Organization,
-		Repositories:   opt.Repositories,
-		Worker:         opt.Worker,
-		Debug:          opt.Debug,
-		ClonePath:      clonePath,
-		GitAccessToken: gitAccessToken,
+		Database:     opt.Database,
+		Organization: opt.Organization,
+		Repositories: opt.Repositories,
+		Worker:       opt.Worker,
+		Debug:        opt.Debug,
 	}
 	if opt.Config != "" {
 		c, err := modrank.LoadConfig(opt.Config)
@@ -154,6 +158,9 @@ func createModRank(ctx context.Context, cfg *Config) (*modrank.ModRank, []*repos
 	}
 	if cfg.GitAccessToken != "" {
 		modrankOpts = append(modrankOpts, modrank.WithGitAccessToken(cfg.GitAccessToken))
+	}
+	if cfg.CleanupRepository {
+		modrankOpts = append(modrankOpts, modrank.WithCleanupRepository())
 	}
 	modrankOpts = append(
 		modrankOpts,

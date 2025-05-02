@@ -157,7 +157,11 @@ func createModRank(ctx context.Context, cfg *Config) (*modrank.ModRank, []*repos
 		modrankOpts = append(modrankOpts, modrank.WithLogLevel(slog.LevelDebug))
 	}
 	if cfg.GitAccessToken != "" {
-		modrankOpts = append(modrankOpts, modrank.WithGitAccessToken(cfg.GitAccessToken))
+		modrankOpts = append(modrankOpts, modrank.WithGitAccessToken(
+			func(_ context.Context) (string, error) {
+				return cfg.GitAccessToken, nil
+			},
+		))
 	}
 	if cfg.CleanupRepository {
 		modrankOpts = append(modrankOpts, modrank.WithCleanupRepository())
@@ -168,7 +172,11 @@ func createModRank(ctx context.Context, cfg *Config) (*modrank.ModRank, []*repos
 		modrank.WithGitHubAPICache(),
 	)
 
-	repoOpts := []repository.Option{repository.WithAuthToken(githubToken)}
+	repoOpts := []repository.Option{
+		repository.WithAuthToken(func(_ context.Context) (string, error) {
+			return githubToken, nil
+		}),
+	}
 	if cfg.ClonePath != "" {
 		repoOpts = append(
 			repoOpts,
@@ -181,7 +189,7 @@ func createModRank(ctx context.Context, cfg *Config) (*modrank.ModRank, []*repos
 	}
 	var scanRepos []*repository.Repository
 	if cfg.Organization != "" {
-		githubClient := modrank.NewGitHubClient(ctx, githubToken)
+		githubClient := modrank.NewGitHubClient(ctx, modrank.GitHubStaticAccessToken(githubToken))
 		repoNames, err := githubClient.FindRepositoriesByOwner(ctx, cfg.Organization)
 		if err != nil {
 			return nil, nil, err

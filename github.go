@@ -21,11 +21,9 @@ import (
 )
 
 type GitHubClient struct {
-	githubToken string
-	restClient  *github.Client
-	gqlClient   *githubv4.Client
-	repoCache   map[string]*GitHubRepository
-	repoCacheMu sync.RWMutex
+	githubAccessToken *GitHubAccessToken
+	repoCache         map[string]*GitHubRepository
+	repoCacheMu       sync.RWMutex
 }
 
 type GitHubRepository struct {
@@ -34,16 +32,10 @@ type GitHubRepository struct {
 	HeadCommit string
 }
 
-func NewGitHubClient(ctx context.Context, token string) *GitHubClient {
-	src := oauth2.StaticTokenSource(&oauth2.Token{
-		AccessToken: token,
-	})
-	httpClient := oauth2.NewClient(ctx, src)
+func NewGitHubClient(ctx context.Context, token *GitHubAccessToken) *GitHubClient {
 	return &GitHubClient{
-		githubToken: token,
-		restClient:  github.NewClient(httpClient),
-		gqlClient:   githubv4.NewClient(httpClient),
-		repoCache:   make(map[string]*GitHubRepository),
+		githubAccessToken: token,
+		repoCache:         make(map[string]*GitHubRepository),
 	}
 }
 
@@ -72,7 +64,19 @@ func (c *GitHubClient) FindRepositoriesByOwner(ctx context.Context, owner string
 			"cursor":       cursor,
 		}
 
-		if err := c.gqlClient.Query(ctx, &query, variables); err != nil {
+		tk, err := c.githubAccessToken.issuer(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("modrank: failed to issue GitHub API access token: %w", err)
+		}
+		gqlClient := githubv4.NewClient(
+			oauth2.NewClient(
+				ctx,
+				oauth2.StaticTokenSource(&oauth2.Token{
+					AccessToken: tk,
+				}),
+			),
+		)
+		if err := gqlClient.Query(ctx, &query, variables); err != nil {
 			return nil, err
 		}
 
@@ -116,7 +120,19 @@ func (c *GitHubClient) ExistsGoMod(ctx context.Context, owner, repo string) (boo
 	if head == "" {
 		return false, nil
 	}
-	tree, _, err := c.restClient.Git.GetTree(ctx, owner, repo, head, true)
+	tk, err := c.githubAccessToken.issuer(ctx)
+	if err != nil {
+		return false, fmt.Errorf("modrank: failed to issue GitHub API access token: %w", err)
+	}
+	restClient := github.NewClient(
+		oauth2.NewClient(
+			ctx,
+			oauth2.StaticTokenSource(&oauth2.Token{
+				AccessToken: tk,
+			}),
+		),
+	)
+	tree, _, err := restClient.Git.GetTree(ctx, owner, repo, head, true)
 	if err != nil {
 		errRes, ok := err.(*github.ErrorResponse)
 		if ok {
@@ -134,7 +150,7 @@ func (c *GitHubClient) ExistsGoMod(ctx context.Context, owner, repo string) (boo
 	return false, nil
 }
 
-func (c *GitHubClient) CreateGitHubRepositoryCache(repos []*repository.Repository) error {
+func (c *GitHubClient) CreateGitHubRepositoryCache(ctx context.Context, repos []*repository.Repository) error {
 	githubRepos := make([]*repository.Repository, 0, len(repos))
 	for _, repo := range repos {
 		if !repo.IsGitHubRepository() {
@@ -145,13 +161,13 @@ func (c *GitHubClient) CreateGitHubRepositoryCache(repos []*repository.Repositor
 	var eg errgroup.Group
 	for _, chunk := range c.chunkRepos(githubRepos) {
 		eg.Go(func() error {
-			return c.createGitHubRepositoryCache(chunk)
+			return c.createGitHubRepositoryCache(ctx, chunk)
 		})
 	}
 	return eg.Wait()
 }
 
-func (c *GitHubClient) createGitHubRepositoryCache(repos []*repository.Repository) error {
+func (c *GitHubClient) createGitHubRepositoryCache(ctx context.Context, repos []*repository.Repository) error {
 	const githubAPI = "https://api.github.com/graphql"
 
 	var (
@@ -193,7 +209,11 @@ query {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.githubToken)
+	tk, err := c.githubAccessToken.issuer(ctx)
+	if err != nil {
+		return fmt.Errorf("modrank: failed to issue GitHub API access token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tk)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)

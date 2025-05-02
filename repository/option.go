@@ -6,12 +6,11 @@ import (
 
 type Option func(*Repository) error
 
-func WithAuthToken(tk string) Option {
+type TokenIssuer func(context.Context) (string, error)
+
+func WithAuthToken(issuer TokenIssuer) Option {
 	return func(r *Repository) error {
-		r.auth = &BasicAuth{
-			Username: "x-access-token",
-			Password: tk,
-		}
+		r.authTokenIssuer = issuer
 		return nil
 	}
 }

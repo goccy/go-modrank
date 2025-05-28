@@ -1,6 +1,11 @@
 package modrank
 
-import "log/slog"
+import (
+	"context"
+	"log/slog"
+)
+
+type TokenIssuer func(context.Context) (string, error)
 
 type Option func(r *ModRank) error
 
@@ -9,9 +14,11 @@ type Option func(r *ModRank) error
 // Specifically, since `git ls-remote` command is used, access rights need to be set in gitconfig.
 // This library allows you to specify the WithGitAuthToken option,
 // which allows access to the repository using the specified token with temporary gitconfig.
-func WithGitAccessToken(tk string) Option {
+func WithGitAccessToken(issuer TokenIssuer) Option {
 	return func(r *ModRank) error {
-		r.gitAccessToken = tk
+		r.gitAccessToken = &GitAccessToken{
+			issuer: issuer,
+		}
 		return nil
 	}
 }
@@ -84,9 +91,11 @@ func WithLogLevel(v slog.Level) Option {
 
 // WithGitHubToken specify the token for using the GitHub API.
 // If this option is not specified, the value of the GITHUB_TOKEN environment variable is used.
-func WithGitHubToken(tk string) Option {
+func WithGitHubToken(issuer TokenIssuer) Option {
 	return func(r *ModRank) error {
-		r.githubToken = tk
+		r.githubAccessToken = &GitHubAccessToken{
+			issuer: issuer,
+		}
 		return nil
 	}
 }

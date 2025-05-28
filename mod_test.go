@@ -12,16 +12,16 @@ func TestHostedRepository(t *testing.T) {
 			expected: "github.com/go-yaml/yaml",
 		},
 		{
+			name:     "gopkg.in/jcmturner/gokrb5.v7",
+			expected: "github.com/jcmturner/gokrb5",
+		},
+		{
 			name:     "go.lsp.dev/protocol",
 			expected: "github.com/go-language-server/protocol",
 		},
 		{
 			name:     "github.com/cncf/udpa/go",
 			expected: "github.com/cncf/udpa",
-		},
-		{
-			name:     "gopkg.in/jcmturner/gokrb5.v7",
-			expected: "github.com/jcmturner/gokrb5",
 		},
 	}
 	for _, test := range tests {

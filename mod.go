@@ -123,10 +123,10 @@ func getHostedRepositoryByName(name string) string {
 	if repo, _ := getHostedRepositoryByGoProxy(name); repo != "" {
 		return repo
 	}
-	if repo, _ := getHostedRepositoryByGoImportMetaTag(name); repo != "" {
+	if repo, _ := getHostedRepositoryByGoPkgIn(name); repo != "" {
 		return repo
 	}
-	if repo, _ := getHostedRepositoryByGoPkgIn(name); repo != "" {
+	if repo, _ := getHostedRepositoryByGoImportMetaTag(name); repo != "" {
 		return repo
 	}
 	return name
@@ -193,7 +193,7 @@ func getHostedRepositoryByGoImportMetaTag(name string) (string, error) {
 		}
 		repo = strings.TrimSuffix(parts[2], ".git")
 	})
-	if err := c.Visit("https://" + name); err != nil {
+	if err := c.Visit(fmt.Sprintf("https://%s?go-get=1", name)); err != nil {
 		return "", err
 	}
 	return strings.TrimPrefix(repo, "https://"), nil

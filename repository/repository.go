@@ -14,13 +14,13 @@ import (
 const DefaultRepositoryWeight = 1
 
 type Repository struct {
-	repoName  string
-	ownerName string
-	url       string
-	auth      *BasicAuth
-	cloner    Cloner
-	clonePath string
-	weight    int
+	repoName        string
+	ownerName       string
+	url             string
+	cloner          Cloner
+	clonePath       string
+	weight          int
+	authTokenIssuer TokenIssuer
 }
 
 func New(url string, opts ...Option) (*Repository, error) {
@@ -63,10 +63,6 @@ func (r *Repository) NameWithOwner() string {
 	return r.ownerName + "/" + r.repoName
 }
 
-func (r *Repository) Auth() *BasicAuth {
-	return r.auth
-}
-
 func (r *Repository) Weight() int {
 	return r.weight
 }
@@ -80,7 +76,18 @@ func (r *Repository) HeadCommit(ctx context.Context, path string) (string, error
 }
 
 func (r *Repository) Clone(ctx context.Context, path string) error {
-	return r.cloner.Clone(ctx, path, r.url, r.auth)
+	var auth *BasicAuth
+	if r.authTokenIssuer != nil {
+		tk, err := r.authTokenIssuer(ctx)
+		if err != nil {
+			return fmt.Errorf("modrank: failed to issue token to access git repository: %w", err)
+		}
+		auth = &BasicAuth{
+			Username: "x-access-token",
+			Password: tk,
+		}
+	}
+	return r.cloner.Clone(ctx, path, r.url, auth)
 }
 
 func (r *Repository) GoModPaths() ([]string, error) {

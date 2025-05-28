@@ -21,18 +21,41 @@ import (
 )
 
 type ModRank struct {
-	storage        Storage
-	scoredModCache map[*GoModule]int
-	logLevel       slog.Level
-	logger         *slog.Logger
-	tmpDir         string
-	githubToken    string
-	gitAccessToken string
-	gitConfigPath  string
-	githubClient   *GitHubClient
-	githubAPICache bool
-	cleanupRepo    bool
-	workerNum      int
+	storage           Storage
+	scoredModCache    map[*GoModule]int
+	logLevel          slog.Level
+	logger            *slog.Logger
+	tmpDir            string
+	gitAccessToken    *GitAccessToken
+	githubAccessToken *GitHubAccessToken
+	githubClient      *GitHubClient
+	githubAPICache    bool
+	cleanupRepo       bool
+	workerNum         int
+}
+
+type GitAccessToken struct {
+	issuer    TokenIssuer
+	lastToken string
+	mu        sync.Mutex
+}
+
+type GitHubAccessToken = GitAccessToken
+
+func GitStaticAccessToken(tk string) *GitAccessToken {
+	return &GitAccessToken{
+		issuer: func(_ context.Context) (string, error) {
+			return tk, nil
+		},
+	}
+}
+
+func GitHubStaticAccessToken(tk string) *GitHubAccessToken {
+	return &GitAccessToken{
+		issuer: func(_ context.Context) (string, error) {
+			return tk, nil
+		},
+	}
 }
 
 const defaultWorkerNum = 1
@@ -46,10 +69,10 @@ const gitConfigTmpl = `
 
 func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 	modRank := &ModRank{
-		scoredModCache: make(map[*GoModule]int),
-		githubToken:    os.Getenv("GITHUB_TOKEN"),
-		workerNum:      defaultWorkerNum,
-		logLevel:       slog.LevelInfo,
+		scoredModCache:    make(map[*GoModule]int),
+		githubAccessToken: GitHubStaticAccessToken(os.Getenv("GITHUB_TOKEN")),
+		workerNum:         defaultWorkerNum,
+		logLevel:          slog.LevelInfo,
 	}
 	for _, opt := range opts {
 		if err := opt(modRank); err != nil {
@@ -59,7 +82,7 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 	if modRank.tmpDir == "" {
 		modRank.tmpDir = helper.TmpRoot
 	}
-	modRank.githubClient = NewGitHubClient(ctx, modRank.githubToken)
+	modRank.githubClient = NewGitHubClient(ctx, modRank.githubAccessToken)
 	if modRank.logger == nil {
 		modRank.logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: modRank.logLevel,
@@ -80,17 +103,6 @@ func New(ctx context.Context, opts ...Option) (*ModRank, error) {
 			return nil, err
 		}
 		modRank.storage = storage
-	}
-	if modRank.gitAccessToken != "" {
-		if err := os.MkdirAll(modRank.tmpDir, 0o755); err != nil {
-			return nil, fmt.Errorf("failed to create temporary directory to create temporary gitconfig file: %s", modRank.tmpDir)
-		}
-		gitConfigPath := filepath.Join(modRank.tmpDir, "gitconfig")
-		if err := os.WriteFile(gitConfigPath, []byte(fmt.Sprintf(gitConfigTmpl, modRank.gitAccessToken)), 0o644); err != nil {
-			return nil, err
-		}
-		modRank.logger.DebugContext(ctx, "create temporary gitconfig", "path", gitConfigPath)
-		modRank.gitConfigPath = gitConfigPath
 	}
 	return modRank, nil
 }
@@ -117,7 +129,7 @@ func (r *ModRank) UpdateRepositoryStatusByGitHubAPI(ctx context.Context, repos .
 	totalRepoNum := len(repos)
 	updatedRepoNum := int32(0)
 
-	if err := r.githubClient.CreateGitHubRepositoryCache(repos); err != nil {
+	if err := r.githubClient.CreateGitHubRepositoryCache(ctx, repos); err != nil {
 		return err
 	}
 
@@ -218,7 +230,7 @@ func (r *ModRank) Run(ctx context.Context, repos ...*repository.Repository) ([]*
 	scannedRepoNum := int32(0)
 
 	if r.githubAPICache {
-		if err := r.githubClient.CreateGitHubRepositoryCache(repos); err != nil {
+		if err := r.githubClient.CreateGitHubRepositoryCache(ctx, repos); err != nil {
 			return nil, err
 		}
 	}
@@ -415,6 +427,39 @@ func (r *ModRank) scanRepo(ctx context.Context, repo *repository.Repository) err
 	return nil
 }
 
+func (r *ModRank) runGoModGraph(ctx context.Context, path string) (string, error) {
+	env := os.Environ()
+	if r.gitAccessToken != nil {
+		r.gitAccessToken.mu.Lock()
+		defer r.gitAccessToken.mu.Unlock()
+
+		tk, err := r.gitAccessToken.issuer(ctx)
+		if err != nil {
+			return "", fmt.Errorf("modrank: failed to get git access token: %w", err)
+		}
+		gitConfigPath := filepath.Join(r.tmpDir, "gitconfig")
+		if r.gitAccessToken.lastToken != tk {
+			if err := os.MkdirAll(r.tmpDir, 0o755); err != nil {
+				return "", fmt.Errorf("failed to create temporary directory to create temporary gitconfig file: %s", r.tmpDir)
+			}
+			if err := os.WriteFile(gitConfigPath, []byte(fmt.Sprintf(gitConfigTmpl, tk)), 0o644); err != nil {
+				return "", err
+			}
+			logger(ctx).DebugContext(ctx, "update temporary gitconfig", "path", gitConfigPath)
+			r.gitAccessToken.lastToken = tk
+		}
+		env = append(env, "GIT_CONFIG_GLOBAL="+gitConfigPath)
+	}
+	cmd := exec.CommandContext(ctx, "go", "mod", "graph")
+	cmd.Dir = filepath.Dir(path)
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), err
+	}
+	return string(out), nil
+}
+
 func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository, path string) ([]*GoModule, error) {
 	gomod, err := os.ReadFile(path)
 	if err != nil {
@@ -431,20 +476,13 @@ func (r *ModRank) scanGoModule(ctx context.Context, repo *repository.Repository,
 
 	pathFromRepoRoot := strings.TrimLeft(strings.TrimPrefix(path, repo.Path()), "/")
 
-	env := os.Environ()
-	if r.gitConfigPath != "" {
-		env = append(env, "GIT_CONFIG_GLOBAL="+r.gitConfigPath)
-	}
-	cmd := exec.CommandContext(ctx, "go", "mod", "graph")
-	cmd.Dir = filepath.Dir(path)
-	cmd.Env = env
-	out, err := cmd.CombinedOutput()
+	out, err := r.runGoModGraph(ctx, path)
 	if err != nil {
-		logger(ctx).WarnContext(ctx, "failed to run `go mod graph`", "stdout", string(out), "stderr", err.Error())
+		logger(ctx).WarnContext(ctx, "failed to run `go mod graph`", "stdout", out, "stderr", err.Error())
 		return nil, nil
 	}
 	modCache := make(map[string]*GoModule)
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		if len(line) == 0 {
 			continue
 		}

@@ -123,10 +123,10 @@ func getHostedRepositoryByName(name string) string {
 	if repo, _ := getHostedRepositoryByGoProxy(name); repo != "" {
 		return repo
 	}
-	if repo, _ := getHostedRepositoryByGoImportMetaTag(name); repo != "" {
+	if repo, _ := getHostedRepositoryByGoPkgIn(name); repo != "" {
 		return repo
 	}
-	if repo, _ := getHostedRepositoryByGoPkgIn(name); repo != "" {
+	if repo, _ := getHostedRepositoryByGoImportMetaTag(name); repo != "" {
 		return repo
 	}
 	return name
